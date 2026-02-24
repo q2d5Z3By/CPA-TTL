@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - v*
+  # 新增：允许在 GitHub Actions 控制台手动触发
+  workflow_dispatch:
+    inputs:
+      custom_tag:
+        description: 'version'
+        required: false
+        type: string
 
 env:
   APP_NAME: CLIProxyAPI
@@ -15,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 建议设为 0，确保 git describe 能够获取到所有 tags
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to DockerHub
@@ -24,9 +33,14 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Generate Build Metadata
         run: |
-          echo VERSION=`git describe --tags --always --dirty` >> $GITHUB_ENV
-          echo COMMIT=`git rev-parse --short HEAD` >> $GITHUB_ENV
-          echo BUILD_DATE=`date -u +%Y-%m-%dT%H:%M:%SZ` >> $GITHUB_ENV
+          # 修改：支持读取手动输入的 tag
+          if [ "${{ inputs.custom_tag }}" != "" ]; then
+            echo "VERSION=${{ inputs.custom_tag }}" >> $GITHUB_ENV
+          else
+            echo "VERSION=$(git describe --tags --always --dirty)" >> $GITHUB_ENV
+          fi
+          echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
       - name: Build and push (amd64)
         uses: docker/build-push-action@v6
         with:
@@ -46,6 +60,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to DockerHub
@@ -55,9 +71,13 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Generate Build Metadata
         run: |
-          echo VERSION=`git describe --tags --always --dirty` >> $GITHUB_ENV
-          echo COMMIT=`git rev-parse --short HEAD` >> $GITHUB_ENV
-          echo BUILD_DATE=`date -u +%Y-%m-%dT%H:%M:%SZ` >> $GITHUB_ENV
+          if [ "${{ inputs.custom_tag }}" != "" ]; then
+            echo "VERSION=${{ inputs.custom_tag }}" >> $GITHUB_ENV
+          else
+            echo "VERSION=$(git describe --tags --always --dirty)" >> $GITHUB_ENV
+          fi
+          echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
       - name: Build and push (arm64)
         uses: docker/build-push-action@v6
         with:
@@ -80,6 +100,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to DockerHub
@@ -89,9 +111,13 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Generate Build Metadata
         run: |
-          echo VERSION=`git describe --tags --always --dirty` >> $GITHUB_ENV
-          echo COMMIT=`git rev-parse --short HEAD` >> $GITHUB_ENV
-          echo BUILD_DATE=`date -u +%Y-%m-%dT%H:%M:%SZ` >> $GITHUB_ENV
+          if [ "${{ inputs.custom_tag }}" != "" ]; then
+            echo "VERSION=${{ inputs.custom_tag }}" >> $GITHUB_ENV
+          else
+            echo "VERSION=$(git describe --tags --always --dirty)" >> $GITHUB_ENV
+          fi
+          echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
       - name: Create and push multi-arch manifests
         run: |
           docker buildx imagetools create \
