@@ -7,17 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       custom_tag:
-        description: 'version'
+        description: '自定义镜像 Tag (可选，例如 v1.0.0，留空则按提交记录自动生成)'
         required: false
         type: string
 
 env:
-  APP_NAME: CLIProxyAPI
   REGISTRY: ghcr.io
-  # 注意：GHCR 的镜像名必须全小写
-  IMAGE_NAME: q2d5Z3By/cpa-ttl 
 
-# 必须增加此权限声明，允许 Action 推送镜像到 GitHub Packages
 permissions:
   contents: read
   packages: write
@@ -40,6 +36,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate Build Metadata
         run: |
+          # 自动获取 用户名/仓库名 并转换为全小写
+          REPO_LOWERCASE="${GITHUB_REPOSITORY,,}"
+          echo "IMAGE_NAME=${REPO_LOWERCASE}" >> $GITHUB_ENV
+
           if [ "${{ inputs.custom_tag }}" != "" ]; then
             echo "VERSION=${{ inputs.custom_tag }}" >> $GITHUB_ENV
           else
@@ -78,6 +78,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate Build Metadata
         run: |
+          REPO_LOWERCASE="${GITHUB_REPOSITORY,,}"
+          echo "IMAGE_NAME=${REPO_LOWERCASE}" >> $GITHUB_ENV
+
           if [ "${{ inputs.custom_tag }}" != "" ]; then
             echo "VERSION=${{ inputs.custom_tag }}" >> $GITHUB_ENV
           else
@@ -119,6 +122,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate Build Metadata
         run: |
+          REPO_LOWERCASE="${GITHUB_REPOSITORY,,}"
+          echo "IMAGE_NAME=${REPO_LOWERCASE}" >> $GITHUB_ENV
+
           if [ "${{ inputs.custom_tag }}" != "" ]; then
             echo "VERSION=${{ inputs.custom_tag }}" >> $GITHUB_ENV
           else
