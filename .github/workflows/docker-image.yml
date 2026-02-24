@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - v*
-  # 新增：允许在 GitHub Actions 控制台手动触发
   workflow_dispatch:
     inputs:
       custom_tag:
@@ -14,7 +13,14 @@ on:
 
 env:
   APP_NAME: CLIProxyAPI
-  DOCKERHUB_REPO: eceasy/cli-proxy-api
+  REGISTRY: ghcr.io
+  # 注意：GHCR 的镜像名必须全小写
+  IMAGE_NAME: q2d5Z3By/cpa-ttl 
+
+# 必须增加此权限声明，允许 Action 推送镜像到 GitHub Packages
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   docker_amd64:
@@ -23,17 +29,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 建议设为 0，确保 git describe 能够获取到所有 tags
+          fetch-depth: 0
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Login to DockerHub
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate Build Metadata
         run: |
-          # 修改：支持读取手动输入的 tag
           if [ "${{ inputs.custom_tag }}" != "" ]; then
             echo "VERSION=${{ inputs.custom_tag }}" >> $GITHUB_ENV
           else
@@ -52,8 +58,8 @@ jobs:
             COMMIT=${{ env.COMMIT }}
             BUILD_DATE=${{ env.BUILD_DATE }}
           tags: |
-            ${{ env.DOCKERHUB_REPO }}:latest-amd64
-            ${{ env.DOCKERHUB_REPO }}:${{ env.VERSION }}-amd64
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}-amd64
 
   docker_arm64:
     runs-on: ubuntu-24.04-arm
@@ -64,11 +70,12 @@ jobs:
           fetch-depth: 0
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Login to DockerHub
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate Build Metadata
         run: |
           if [ "${{ inputs.custom_tag }}" != "" ]; then
@@ -89,8 +96,8 @@ jobs:
             COMMIT=${{ env.COMMIT }}
             BUILD_DATE=${{ env.BUILD_DATE }}
           tags: |
-            ${{ env.DOCKERHUB_REPO }}:latest-arm64
-            ${{ env.DOCKERHUB_REPO }}:${{ env.VERSION }}-arm64
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}-arm64
 
   docker_manifest:
     runs-on: ubuntu-latest
@@ -104,11 +111,12 @@ jobs:
           fetch-depth: 0
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Login to DockerHub
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate Build Metadata
         run: |
           if [ "${{ inputs.custom_tag }}" != "" ]; then
@@ -116,50 +124,14 @@ jobs:
           else
             echo "VERSION=$(git describe --tags --always --dirty)" >> $GITHUB_ENV
           fi
-          echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
       - name: Create and push multi-arch manifests
         run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           docker buildx imagetools create \
-            --tag "${DOCKERHUB_REPO}:latest" \
-            "${DOCKERHUB_REPO}:latest-amd64" \
-            "${DOCKERHUB_REPO}:latest-arm64"
+            --tag "${IMAGE}:latest" \
+            "${IMAGE}:latest-amd64" \
+            "${IMAGE}:latest-arm64"
           docker buildx imagetools create \
-            --tag "${DOCKERHUB_REPO}:${VERSION}" \
-            "${DOCKERHUB_REPO}:${VERSION}-amd64" \
-            "${DOCKERHUB_REPO}:${VERSION}-arm64"
-      - name: Cleanup temporary tags
-        continue-on-error: true
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          namespace="${DOCKERHUB_REPO%%/*}"
-          repo_name="${DOCKERHUB_REPO#*/}"
-
-          token="$(
-            curl -fsSL \
-              -H 'Content-Type: application/json' \
-              -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
-              'https://hub.docker.com/v2/users/login/' \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'
-          )"
-
-          delete_tag() {
-            local tag="$1"
-            local url="https://hub.docker.com/v2/repositories/${namespace}/${repo_name}/tags/${tag}/"
-            local http_code
-            http_code="$(curl -sS -o /dev/null -w "%{http_code}" -X DELETE -H "Authorization: JWT ${token}" "${url}" || true)"
-            if [ "${http_code}" = "204" ] || [ "${http_code}" = "404" ]; then
-              echo "Docker Hub tag removed (or missing): ${DOCKERHUB_REPO}:${tag} (HTTP ${http_code})"
-              return 0
-            fi
-            echo "Docker Hub tag delete failed: ${DOCKERHUB_REPO}:${tag} (HTTP ${http_code})"
-            return 0
-          }
-
-          delete_tag "latest-amd64"
-          delete_tag "latest-arm64"
-          delete_tag "${VERSION}-amd64"
-          delete_tag "${VERSION}-arm64"
+            --tag "${IMAGE}:${{ env.VERSION }}" \
+            "${IMAGE}:${{ env.VERSION }}-amd64" \
+            "${IMAGE}:${{ env.VERSION }}-arm64"
